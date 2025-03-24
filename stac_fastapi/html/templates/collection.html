@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% if params %}
+  {% set urlq = url + '?' + params + '&' %}
+  {% else %}
+  {% set urlq = url + '?' %}
+{% endif %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb bg-light">
+    {% for crumb in crumbs %} {% if not loop.last %}
+    <li class="breadcrumb-item">
+      <a href="{{ crumb.url }}/">{{ crumb.part }}</a>
+    </li>
+    {% else %}
+    <li class="breadcrumb-item active" aria-current="page">{{ crumb.part }}</li>
+    {% endif %} {% endfor %}
+
+    <li class="ml-auto json-link">
+      <a target="_blank" href="{{ urlq }}f=json">JSON</a>
+    </li>
+  </ol>
+</nav>
+
+<h1 class="my-4">
+  <span class="d-block text-uppercase text-muted h6 mb-0">Collection:</span>
+  {{ response.title or response.id }}
+</h1>
+
+<div class="row">
+  <div class="col-md-7">
+    {% if response.description %}
+    <p>{{ response.description }}</p>
+    {% endif %}
+    {% if response.license %}
+    <div class="d-flex align-items-center mb-2">
+      {% include "icons/license.html" %}
+      <p class="mb-0 pl-2">{{ response.license }}</p>
+    </div>
+    {% endif %}
+    {% if response.extent and response.extent.temporal %}
+    <div class="d-flex align-items-center mb-4">
+      {% include "icons/clock.html" %}
+      <p class="mb-0 pl-2">{{ response.extent.temporal.interval.0.0 or "..." }} — {{ response.extent.temporal.interval.0.1 or "..." }}</p>
+    </div>
+    {% endif %}
+    {% if "keywords" in response and response.keywords|length > 0 %}
+    <div class="d-flex align-items-center mb-4">
+      {% include "icons/tag.html" %}
+      <ul class="mb-0 pl-2">
+        {% for keyword in response.keywords %}
+        <li class="badge badge-secondary">{{ keyword }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if response.item_assets and response.item_assets.items()|length > 0 %}
+    <h2>Item Assets</h2>
+    <ul class="list-unstyled">
+      {% for key, asset in response.item_assets.items() %}
+      <li class="mb-2">
+        <p class="small text-monospace text-muted mb-0">{{ key }}</p>
+        <p class="mb-0"><b>{{ asset.title }}</b></p>
+        <p class="mb-0">{{ asset.type }}</p>
+        {% if asset.roles|length > 0 %}
+        <ul class="list-inline">
+          {% for role in asset.roles %}
+          <li class="list-inline-item badge badge-light">{{ role }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if response.renders and response.renders.items()|length > 0 %}
+    <h2>Render Options</h2>
+    <ul class="list-unstyled">
+      {% for key, option in response.renders.items() %}
+      <li class="mb-2">
+        <p class="small text-monospace text-muted mb-0">{{ key }}</p>
+        {% if option.title %}<p class="mb-0"><b>{{ option.title }}</b></p>{% endif %}
+
+        <div class="row">
+          <div class="col-3">assets</div>
+          <div class="col-9">{% for asset in option.assets %}{{ asset }}{% if not loop.last %}, {% endif%}{% endfor %}</div>
+        </div>
+
+        {% for render_key, render_opt in option.items() %}
+        {% if render_key != 'title' and render_key != 'assets' %}
+        <div class="row">
+          <div class="col-3">{{ render_key }}</div>
+          <div class="col-9">{{ render_opt }}</div>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <h2>Links</h2>
+    <ul>
+      {% for link in response.links %}
+      <li><a href="{{ link.href }}">{{ link.title or link.rel }}</a></li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="col-md-5">
+    {% if response.extent and response.extent.spatial %}
+    <div id="map" class="rounded" style="width: 100%; height: 400px">
+      Loading...
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if response.extent and response.extent.spatial %}
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.fullscreen/2.0.0/Control.FullScreen.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.fullscreen/2.0.0/Control.FullScreen.min.js"></script>
+
+<script>
+  window.addEventListener("load", function() {
+    const collection = {{ response|tojson }};
+    var map = L.map('map', {
+      fullscreenControl: true,
+      fullscreenControlOptions: {
+        position: 'bottomright',
+        title: 'View Fullscreen',
+        titleCancel: 'Exit Fullscreen',
+        content: '<i class="fa fa-expand"></i>'  // You can customize this icon
+      }
+    }).setView([0, 0], 1);
+
+    var osmLayer = new L.TileLayer(
+      'https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: 'Map data &copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+      }
+    );
+    map.addLayer(osmLayer);
+
+    // Draw the bounding boxes
+    for (let i = 0, len = collection.extent.spatial.bbox.length; i < len; i++) {
+      const options = i === 0 ? {
+        fill: false,
+        weight: 2
+      } : {
+        color: "red",
+        fill: false,
+        dashArray: 2,
+        weight: 1
+      };
+      const bbox = collection.extent.spatial.bbox[i];
+      const bbox_polygon = L.polygon([
+        [bbox[1], bbox[0]],
+        [bbox[1], bbox[2]],
+        [bbox[3], bbox[2]],
+        [bbox[3], bbox[0]]
+      ], options);
+
+      map.addLayer(bbox_polygon);
+      if (i === 0) {
+        map.fitBounds(bbox_polygon.getBounds());
+      }
+    }
+
+    // Add any tilejson links as layers to the map
+    const tileJsonLinks = collection.links.filter(link => link.rel === "tiles");
+
+    const overlayLayers = {};
+
+    if (tileJsonLinks.length > 0) {
+      tileJsonLinks.forEach((link, index) => {
+        fetch(link.href)
+          .then(response => response.json())
+          .then(tileJson => {
+            console.log(tileJson)
+            const tileLayer = L.tileLayer(tileJson.tiles[0], {
+              attribution: tileJson.attribution || '',
+              minZoom: tileJson.minzoom || 0,
+              maxZoom: tileJson.maxzoom || 18
+            });
+
+            const layerName = link.title || `TileJSON Layer ${index + 1}`;
+            overlayLayers[layerName] = tileLayer;
+
+            // Add the first layer to the map by default
+            if (index === 0) {
+              tileLayer.addTo(map);
+            }
+
+            // Add layer control after all layers are processed
+            if (index === tileJsonLinks.length - 1) {
+              // Define the base layers
+              const baseLayers = {
+                "OpenStreetMap": osmLayer
+              };
+
+              // Add the layer control to the map
+              L.control.layers(baseLayers, overlayLayers).addTo(map);
+            }
+          })
+          .catch(error => {
+            console.error("Error loading TileJSON:", error);
+          });
+      });
+    }
+
+    // Handle fullscreen change event to resize map
+    map.on('fullscreenchange', function() {
+      if (map.isFullscreen()) {
+        console.log('Entered fullscreen');
+      } else {
+        console.log('Exited fullscreen');
+      }
+      // Make sure the map fills the container after fullscreen changes
+      map.invalidateSize();
+    });
+  });
+</script>
+{% endif %}
+{% endblock %}

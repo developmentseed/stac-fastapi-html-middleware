@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% if params %}
+  {% set urlq = url + '?' + params + '&' %}
+  {% else %}
+  {% set urlq = url + '?' %}
+{% endif %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb bg-light">
+    {% for crumb in crumbs %}
+      {% if not loop.last %}
+    <li class="breadcrumb-item"><a href="{{ crumb.url }}/">{{ crumb.part }}</a></li>
+      {% else %}<li class="breadcrumb-item active" aria-current="page">{{ crumb.part }}</li>
+      {% endif %}
+    {% endfor %}
+
+    <li class="ml-auto json-link"><a target="_blank" href="{{ urlq }}f=json">JSON</a></li>
+  </ol>
+</nav>
+
+<h1>Collections</h1>
+
+{% if not response.collections %}
+<div class="text-center mx-auto py-5 w-50">
+  <p class="h4 mb-3">No collections found</p>
+  <p>You need to add STAC Collections and Items; for example by following the <a href="https://github.com/vincentsarago/MAXAR_opendata_to_pgstac">MAXAR open data demo</a> or <a href="https://github.com/developmentseed/eoAPI/tree/main/demo">other demos.</a></p>
+</div>
+{% else %}
+<div class="d-flex flex-row align-items-center mb-4 flex-wrap">
+  <div class="mr-3">
+    Showing {{ template.params.get("offset", 0)|int + 1 }} - {{ template.params.get("offset", 0)|int + response.numberReturned }} of {{ response.numberMatched }} collections
+  </div>
+
+  <!-- Enable collection-search ? -->
+  <!-- <form id="search-form" class="d-flex flex-wrap flex-grow-1" style="gap: 8px">
+    <div class="input-group input-group-sm" style="max-width: 180px">
+      <input type="text" class="form-control" id="q" placeholder="Text search"
+             value="{{ request.query_params.get('q', '') }}" title="Text search">
+    </div>
+
+    <div class="btn-group btn-group-sm">
+      <button type="submit" class="btn btn-primary">Search</button>
+      <button type="button" id="clear-search" class="btn btn-secondary">Clear</button>
+    </div>
+  </form> -->
+
+  <div class="form-inline" style="gap: 10px">
+    <div class="d-flex">
+      <label for="limit" class="mr-1 small">Page size:</label>
+      <select class="form-control form-control-sm" id="limit" aria-label="Select page size" style="width: 70px">
+        <option value="10" {% if template.params.get("limit", 10)|int == 10 %}selected{% endif %}>10</option>
+        <option value="25" {% if template.params.get("limit", 10)|int == 25 %}selected{% endif %}>25</option>
+        <option value="50" {% if template.params.get("limit", 10)|int == 50 %}selected{% endif %}>50</option>
+        <option value="100" {% if template.params.get("limit", 10)|int == 100 %}selected{% endif %}>100</option>
+      </select>
+    </div>
+
+    {% if response.links|length > 0 %}
+    <div class="btn-group btn-group-sm" role="group" aria-label="Paginate">
+      {% for link in response.links %}
+      {% if link.rel == 'prev' or link.rel == 'previous' %}
+        <a class="btn btn-secondary" title="previous page" href="{{ link.href }}">« prev</a>
+      {% endif %}
+      {% endfor %}
+      {% for link in response.links %}
+      {% if link.rel == 'next' %}
+        <a class="btn btn-secondary" title="next page" href="{{ link.href }}">next »</a>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table" style="width:100%;">
+    <thead class="thead-light">
+      <tr>
+        <th>Title</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+{% for collection in response.collections %}
+      <tr>
+        <td><a href="{{ template.api_root }}/collections/{{ collection.id }}">{{ collection.title or collection.id }}</a></td>
+        <td>{{ collection.description or collection.title or collection.id }}</td>
+      </tr>
+{% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+document.getElementById("limit").addEventListener("change", (event) => {
+  const limit = event.target.value;
+  const searchParams = new URLSearchParams(window.location.search);
+  searchParams.set('limit', limit);
+  searchParams.set('offset', 0);
+  window.location.href = "{{ template.api_root }}/collections?" + searchParams.toString();
+});
+
+document.getElementById("search-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const searchParams = new URLSearchParams();
+
+  const q = document.getElementById('q').value.trim();
+  const limit = document.getElementById('limit').value;
+
+  if (q) searchParams.set('q', q);
+  searchParams.set('limit', limit);
+
+  window.location.href = "{{ template.api_root }}/collections?" + searchParams.toString();
+  return false;
+});
+
+document.getElementById("clear-search").addEventListener("click", () => {
+  const searchParams = new URLSearchParams();
+  searchParams.set('limit', document.getElementById('limit').value);
+  window.location.href = "{{ template.api_root }}/collections?" + searchParams.toString();
+});
+</script>
+{% endif %}
+{% endblock %}
