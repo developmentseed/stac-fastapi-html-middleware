@@ -2,13 +2,14 @@
 
 import json
 import re
+from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
 import jinja2
 from stac_pydantic.shared import MimeTypes
 from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
-from starlette.templating import Jinja2Templates, _TemplateResponse
+from starlette.templating import Jinja2Templates
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 jinja2_env = jinja2.Environment(
@@ -19,6 +20,20 @@ jinja2_env = jinja2.Environment(
     )
 )
 DEFAULT_TEMPLATES = Jinja2Templates(env=jinja2_env)
+
+ENDPOINT_TEMPLATES = {
+    # endpoint Name: template name
+    "Landing Page": "landing",
+    "Conformance Classes": "conformances",
+    "Get Collections": "collections",
+    "Get Collection": "collection",
+    "Get ItemCollection": "items",
+    "Get Item": "item",
+    "Search": "search",
+    # Extensions
+    "Queryables": "queryables",
+    "Collection Queryables": "queryables",
+}
 
 
 def preferred_encoding(accept: str) -> Optional[List[str]]:
@@ -57,19 +72,12 @@ def preferred_encoding(accept: str) -> Optional[List[str]]:
     return next(iter(encoding_preference.values())) if encoding_preference else None
 
 
+@dataclass(frozen=True)
 class HTMLRenderMiddleware:
     """MiddleWare to return HTML response from stac-fastapi."""
 
-    def __init__(self, app: ASGIApp, templates: Optional[Jinja2Templates] = None) -> None:
-        """Init Middleware.
-
-        Args:
-            app (ASGIApp): starlette/FastAPI application.
-
-        """
-        self.app = app
-        self.initial_message = {}  # type: Message
-        self.templates = templates or DEFAULT_TEMPLATES
+    app: ASGIApp
+    templates: Jinja2Templates = field(default_factory=lambda: DEFAULT_TEMPLATES)
 
     def create_html_response(
         self,
@@ -79,7 +87,7 @@ class HTMLRenderMiddleware:
         title: Optional[str] = None,
         router_prefix: Optional[str] = None,
         **kwargs: Any,
-    ) -> _TemplateResponse:
+    ) -> bytes:
         """Create Template response."""
         router_prefix = request.app.state.router_prefix
 
@@ -123,70 +131,71 @@ class HTMLRenderMiddleware:
                 "params": str(request.url.query),
                 **kwargs,
             },
-        )
+        ).body
 
-    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):  # noqa: C901
         """Handle call."""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
-        request = Request(scope)
-        qs = dict(request.query_params)
+        if scope["method"] != "GET":
+            await self.app(scope, receive, send)
+            return
 
-        endpoint_templates = {
-            # endpoint Name: template name
-            "Landing Page": "landing",
-            "Conformance Classes": "conformances",
-            "Get Collections": "collections",
-            "Get Collection": "collection",
-            "Get ItemCollection": "items",
-            "Get Item": "item",
-            "Search": "search",
-            # Extensions
-            "Queryables": "queryables",
-            "Collection Queryables": "queryables",
-        }
+        start_message: Message
+        body = b""
 
-        pref_encoding = preferred_encoding(request.headers.get("accept", "")) or []
-        output_type: Optional[MimeTypes] = None
-        if qs.get("f", "") == "html":
-            output_type = MimeTypes.html
-        elif "text/html" in pref_encoding and not qs.get("f", ""):
-            output_type = MimeTypes.html
+        async def send_as_html(message: Message):
+            nonlocal start_message
+            nonlocal body
 
-        async def send_wrapper(message: Message):
-            """Send Message."""
-            message_type = message["type"]
+            if message["type"] == "http.response.start":
+                start_message = message
+                return
 
-            if message_type == "http.response.start":
-                self.initial_message = message
-
-            elif message_type == "http.response.body":
-                headers = MutableHeaders(raw=self.initial_message["headers"])
-
-                if (
-                    scope["method"] == "GET"
-                    and self.initial_message["status"] == 200
-                    and output_type
-                ):
-                    if tpl := endpoint_templates.get(scope["route"].name):
-                        headers["content-type"] = "text/html"
-                        message["body"] = self.create_html_response(
-                            request,
-                            json.loads(message["body"].decode()),
-                            template_name=tpl,
-                            title=scope["route"].name,
-                        ).body
-
-                        headers["Content-Encoding"] = "text/html"
-                        headers["Content-Length"] = str(len(message["body"]))
-
-                await send(self.initial_message)
+            elif message["type"] != "http.response.body":
                 await send(message)
+                return
 
-            else:
-                await send(self.initial_message)
-                await send(message)
+            body += message["body"]
 
-        await self.app(scope, receive, send_wrapper)
+            # Skip body chunks until all chunks have been received
+            if message.get("more_body", False):
+                return
+
+            request = Request(scope, receive=receive)
+            pref_encoding = preferred_encoding(request.headers.get("accept", "")) or []
+
+            output_type: Optional[MimeTypes] = None
+            if request.query_params.get("f", "") == "html":
+                output_type = MimeTypes.html
+            elif "text/html" in pref_encoding and not request.query_params.get("f", ""):
+                output_type = MimeTypes.html
+
+            if start_message["status"] == 200 and output_type:
+                headers = MutableHeaders(scope=start_message)
+                if tpl := ENDPOINT_TEMPLATES.get(scope["route"].name):
+                    headers["content-type"] = "text/html"
+                    body = self.create_html_response(
+                        request,
+                        json.loads(body.decode()),
+                        template_name=tpl,
+                        title=scope["route"].name,
+                    )
+                    headers["Content-Encoding"] = "text/html"
+                    headers["Content-Length"] = str(len(body))
+
+            # Send http.response.start
+            await send(start_message)
+
+            # Send http.response.body
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": body,
+                    "more_body": False,
+                }
+            )
+
+        await self.app(scope, receive, send_as_html)
