@@ -25,17 +25,17 @@ jinja2_env = jinja2.Environment(
 DEFAULT_TEMPLATES = Jinja2Templates(env=jinja2_env)
 
 ENDPOINT_TEMPLATES = {
-    # endpoint Name: template name
-    "Landing Page": "landing",
-    "Conformance Classes": "conformances",
-    "Get Collections": "collections",
-    "Get Collection": "collection",
-    "Get ItemCollection": "items",
-    "Get Item": "item",
-    "Search": "search",
+    # endpoint Name (lower case): template name
+    "landing page": "landing",
+    "conformance classes": "conformances",
+    "get collections": "collections",
+    "get collection": "collection",
+    "get itemcollection": "items",
+    "get item": "item",
+    "search": "search",
     # Extensions
-    "Queryables": "queryables",
-    "Collection Queryables": "queryables",
+    "queryables": "queryables",
+    "collection queryables": "queryables",
 }
 
 
@@ -153,7 +153,7 @@ class HTMLRenderMiddleware:
         start_message: Message
         body = b""
 
-        async def send_as_html(message: Message):
+        async def send_as_html(message: Message):  # noqa: C901
             nonlocal start_message
             nonlocal body
 
@@ -182,19 +182,60 @@ class HTMLRenderMiddleware:
             ) and not request.query_params.get("f", ""):
                 encode_to_html = True
 
-            if start_message["status"] == 200 and encode_to_html:
+            response_headers = MutableHeaders(scope=start_message)
+            if (
+                response_headers.get("Content-Type")
+                == "application/vnd.oai.openapi+json;version=3.0"
+            ):
+                openapi_doc = json.loads(body.decode())
+                for _, path in openapi_doc.get("paths").items():
+                    if (
+                        path.get("get", {}).get("summary", "").lower()
+                        in self.endpoints_names
+                    ):
+                        if "parameters" not in path["get"]:
+                            path["get"]["parameters"] = []
+
+                        path["get"]["parameters"].append(
+                            {
+                                "name": "f",
+                                "in": "query",
+                                "required": False,
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "enum": [
+                                                "html",
+                                            ],
+                                            "type": "string",
+                                        },
+                                        {"type": "null"},
+                                    ],
+                                    "description": "Response MediaType.",
+                                    "title": "F",
+                                },
+                                "description": "Response MediaType.",
+                            }
+                        )
+                        path["get"]["responses"]["200"]["content"].update(
+                            {"text/html": {}}
+                        )
+
+                body = json.dumps(openapi_doc).encode("utf-8")
+                response_headers["Content-Length"] = str(len(body))
+
+            elif start_message["status"] == 200 and encode_to_html:
                 # NOTE: `scope["route"]` seems to be specific to FastAPI application
                 if route := scope.get("route"):
-                    if tpl := self.endpoints_names.get(route.name):
+                    if tpl := self.endpoints_names.get(route.name.lower()):
                         body = self.create_html_response(
                             request,
                             json.loads(body.decode()),
                             template_name=tpl,
                             title=route.name,
                         )
-                        headers = MutableHeaders(scope=start_message)
-                        headers["Content-Type"] = "text/html"
-                        headers["Content-Length"] = str(len(body))
+                        response_headers["Content-Type"] = "text/html"
+                        response_headers["Content-Length"] = str(len(body))
 
             # Send http.response.start
             await send(start_message)
