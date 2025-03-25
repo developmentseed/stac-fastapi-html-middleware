@@ -6,17 +6,20 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "stac-fastapi.api",
+    "starlette",
     "jinja2>=2.11.2,<4.0.0",
 ]
 
 extra_reqs = {
-    "dev": [
+    "test": [
         "pytest",
         "pytest-cov",
         "pytest-asyncio",
         "httpx",
+    ],
+    "dev": [
         "pre-commit",
+        "bump-my-version",
     ],
 }
 

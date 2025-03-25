@@ -1,16 +1,19 @@
 """stac-fastapi HTML middlewares."""
 
+from __future__ import annotations
+
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 import jinja2
-from stac_pydantic.shared import MimeTypes
 from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.templating import Jinja2Templates
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+if TYPE_CHECKING:
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 jinja2_env = jinja2.Environment(
     loader=jinja2.ChoiceLoader(
@@ -46,6 +49,9 @@ def preferred_encoding(accept: str) -> Optional[List[str]]:
     """
     accept_values = {}
     for m in accept.replace(" ", "").split(","):
+        if not m:
+            continue
+
         values = m.split(";")
         if len(values) == 1:
             name = values[0]
@@ -78,6 +84,7 @@ class HTMLRenderMiddleware:
 
     app: ASGIApp
     templates: Jinja2Templates = field(default_factory=lambda: DEFAULT_TEMPLATES)
+    endpoints_names: dict[str, str] = field(default_factory=lambda: ENDPOINT_TEMPLATES)
 
     def create_html_response(
         self,
@@ -89,7 +96,7 @@ class HTMLRenderMiddleware:
         **kwargs: Any,
     ) -> bytes:
         """Create Template response."""
-        router_prefix = request.app.state.router_prefix
+        router_prefix = getattr(request.app.state, "router_prefix", None)
 
         urlpath = request.url.path
         if root_path := request.app.root_path:
@@ -167,23 +174,25 @@ class HTMLRenderMiddleware:
             request = Request(scope, receive=receive)
             pref_encoding = preferred_encoding(request.headers.get("accept", "")) or []
 
-            output_type: Optional[MimeTypes] = None
+            encode_to_html = False
             if request.query_params.get("f", "") == "html":
-                output_type = MimeTypes.html
-            elif "text/html" in pref_encoding and not request.query_params.get("f", ""):
-                output_type = MimeTypes.html
+                encode_to_html = True
+            elif (
+                "text/html" in pref_encoding or "*" in pref_encoding
+            ) and not request.query_params.get("f", ""):
+                encode_to_html = True
 
-            if start_message["status"] == 200 and output_type:
-                headers = MutableHeaders(scope=start_message)
-                if tpl := ENDPOINT_TEMPLATES.get(scope["route"].name):
-                    headers["content-type"] = "text/html"
+            if start_message["status"] == 200 and encode_to_html:
+                # NOTE: `scope["route"]` seems to be specific to FastAPI application
+                if tpl := self.endpoints_names.get(scope["route"].name):
                     body = self.create_html_response(
                         request,
                         json.loads(body.decode()),
                         template_name=tpl,
                         title=scope["route"].name,
                     )
-                    headers["Content-Encoding"] = "text/html"
+                    headers = MutableHeaders(scope=start_message)
+                    headers["Content-Type"] = "text/html"
                     headers["Content-Length"] = str(len(body))
 
             # Send http.response.start
