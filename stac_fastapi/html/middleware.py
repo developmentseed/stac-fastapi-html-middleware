@@ -184,16 +184,17 @@ class HTMLRenderMiddleware:
 
             if start_message["status"] == 200 and encode_to_html:
                 # NOTE: `scope["route"]` seems to be specific to FastAPI application
-                if tpl := self.endpoints_names.get(scope["route"].name):
-                    body = self.create_html_response(
-                        request,
-                        json.loads(body.decode()),
-                        template_name=tpl,
-                        title=scope["route"].name,
-                    )
-                    headers = MutableHeaders(scope=start_message)
-                    headers["Content-Type"] = "text/html"
-                    headers["Content-Length"] = str(len(body))
+                if route := scope.get("route"):
+                    if tpl := self.endpoints_names.get(route.name):
+                        body = self.create_html_response(
+                            request,
+                            json.loads(body.decode()),
+                            template_name=tpl,
+                            title=route.name,
+                        )
+                        headers = MutableHeaders(scope=start_message)
+                        headers["Content-Type"] = "text/html"
+                        headers["Content-Length"] = str(len(body))
 
             # Send http.response.start
             await send(start_message)

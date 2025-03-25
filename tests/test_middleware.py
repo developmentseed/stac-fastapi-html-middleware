@@ -57,7 +57,10 @@ def test_get_compression_backend(header, expected):
 
 @pytest.fixture
 def client():  # noqa: C901
-    app = FastAPI()
+    app = FastAPI(
+        openapi_url="/api",
+        docs_url="/api.html",
+    )
     app.add_middleware(HTMLRenderMiddleware)
 
     @app.get("/", name="Landing Page")
@@ -131,6 +134,10 @@ def test_html_middleware(client):
     # No HTML response for POST request
     response = client.post("/search", headers={"Accept": "text/html"})
     assert response.headers["Content-Type"] == "application/geo+json"
+
+    # No influence on endpoint outside stac-fastapi scope
+    response = client.get("/api", headers={"Accept": "text/html"})
+    assert response.headers["Content-Type"] == "application/json"
 
 
 @pytest.mark.parametrize(
