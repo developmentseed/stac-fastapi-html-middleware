@@ -12,6 +12,7 @@ install_requires = [
 
 extra_reqs = {
     "test": [
+        "fastapi",
         "pytest",
         "pytest-cov",
         "pytest-asyncio",
