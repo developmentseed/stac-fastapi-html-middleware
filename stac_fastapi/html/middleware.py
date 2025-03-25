@@ -84,7 +84,7 @@ class HTMLRenderMiddleware:
 
     app: ASGIApp
     templates: Jinja2Templates = field(default_factory=lambda: DEFAULT_TEMPLATES)
-    endpoints_names: dict[str, str] = field(default_factory=lambda: ENDPOINT_TEMPLATES)
+    endpoint_names: dict[str, str] = field(default_factory=lambda: ENDPOINT_TEMPLATES)
 
     def create_html_response(
         self,
@@ -194,7 +194,7 @@ class HTMLRenderMiddleware:
                 for _, path in openapi_doc.get("paths").items():
                     if (
                         path.get("get", {}).get("summary", "").lower()
-                        in self.endpoints_names
+                        in self.endpoint_names
                     ):
                         if "parameters" not in path["get"]:
                             path["get"]["parameters"] = []
@@ -230,7 +230,7 @@ class HTMLRenderMiddleware:
             elif start_message["status"] == 200 and encode_to_html:
                 # NOTE: `scope["route"]` seems to be specific to FastAPI application
                 if route := scope.get("route"):
-                    if tpl := self.endpoints_names.get(route.name.lower()):
+                    if tpl := self.endpoint_names.get(route.name.lower()):
                         body = self.create_html_response(
                             request,
                             json.loads(body.decode()),
