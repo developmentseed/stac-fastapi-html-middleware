@@ -183,6 +183,9 @@ class HTMLRenderMiddleware:
                 encode_to_html = True
 
             response_headers = MutableHeaders(scope=start_message)
+
+            # stac-fastapi application overwrite the content-type for
+            # openapi response and use "application/vnd.oai.openapi+json;version=3.0"
             if (
                 response_headers.get("Content-Type")
                 == "application/vnd.oai.openapi+json;version=3.0"
