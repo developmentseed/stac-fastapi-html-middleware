@@ -7,7 +7,8 @@ from typing import Optional
 import pytest
 from fastapi import FastAPI
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
+from starlette.routing import Route, request_response
 from starlette.testclient import TestClient
 
 from stac_fastapi.html.middleware import HTMLRenderMiddleware, preferred_encoding
@@ -57,10 +58,45 @@ def test_get_compression_backend(header, expected):
 
 @pytest.fixture
 def client():  # noqa: C901
+    # Ref: https://github.com/stac-utils/stac-fastapi/blob/20ae9cfaf87ed892ef3235d979892e7e24c63fc0/stac_fastapi/api/stac_fastapi/api/openapi.py
+    def update_openapi(app: FastAPI) -> FastAPI:
+        """Update OpenAPI response content-type.
+
+        This function modifies the openapi route to comply with the STAC API spec's required
+        content-type response header.
+        """
+        # Find the route for the openapi_url in the app
+        openapi_route: Route = next(
+            route for route in app.router.routes if route.path == app.openapi_url
+        )
+        # Store the old endpoint function so we can call it from the patched function
+        old_endpoint = openapi_route.endpoint
+
+        # Create a patched endpoint function that modifies the content type of the response
+        async def patched_openapi_endpoint(req: Request) -> Response:
+            # Get the response from the old endpoint function
+            response: JSONResponse = await old_endpoint(req)
+            # Update the content type header in place
+            response.headers["content-type"] = (
+                "application/vnd.oai.openapi+json;version=3.0"
+            )
+            # Return the updated response
+            return response
+
+        # When a Route is accessed the `handle` function calls `self.app`. Which is
+        # the endpoint function wrapped with `request_response`. So we need to wrap
+        # our patched function and replace the existing app with it.
+        openapi_route.app = request_response(patched_openapi_endpoint)
+
+        # return the patched app
+        return app
+
     app = FastAPI(
         openapi_url="/api",
         docs_url="/api.html",
     )
+    update_openapi(app)
+
     app.add_middleware(HTMLRenderMiddleware)
 
     @app.get("/", name="Landing Page")
@@ -135,9 +171,11 @@ def test_html_middleware(client):
     response = client.post("/search", headers={"Accept": "text/html"})
     assert response.headers["Content-Type"] == "application/geo+json"
 
-    # No influence on endpoint outside stac-fastapi scope
+    # No influence on endpoint outside scope
     response = client.get("/api", headers={"Accept": "text/html"})
-    assert response.headers["Content-Type"] == "application/json"
+    assert (
+        response.headers["Content-Type"] == "application/vnd.oai.openapi+json;version=3.0"
+    )
 
 
 @pytest.mark.parametrize(
@@ -157,3 +195,27 @@ def test_html_middleware(client):
 def test_all_routes(client, route, accept, result):
     response = client.get(route, headers={"accept": accept})
     assert response.headers["Content-Type"] == result
+
+
+def test_openapi_override(client):
+    """Test OpenAPI update."""
+    response = client.get("/api", headers={"Accept": "text/html"})
+    assert (
+        response.headers["Content-Type"] == "application/vnd.oai.openapi+json;version=3.0"
+    )
+    body = response.json()
+
+    for endpoint in [
+        "/",
+        "/conformance",
+        "/collections",
+        "/collections/{collectionId}",
+        "/collections/{collectionId}/items",
+        "/collections/{collectionId}/items/{itemId}",
+        "/search",
+        "/queryables",
+        "/collections/{collectionId}/queryables",
+    ]:
+        path = body["paths"][endpoint]
+        assert next(filter(lambda p: p["name"] == "f", path["get"]["parameters"]))
+        assert "text/html" in path["get"]["responses"]["200"]["content"]
