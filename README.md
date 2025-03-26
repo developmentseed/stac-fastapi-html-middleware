@@ -1,7 +1,7 @@
 ## stac-fastapi HTML middleware
 
 <p align="center">
-  <img width="500" src="https://github.com/user-attachments/assets/f243a238-5ba7-44da-963a-cd865578c2a5"/>
+  <img width="500" src="docs/img/landing.png"/>
   <p align="center">stac-fastapi middleware to encode responses into HTML documents</p>
 </p>
 <p align="center">
@@ -62,7 +62,7 @@ content-type: text/html
 
 This middleware will also intercept the openapi document from stac-fastapi application to enhance the schemas by adding `f=html` query-parameter and `Accept: text/html` available headers.
 
-<img width="800" alt="Screenshot 2025-03-25 at 3 16 44 PM" src="https://github.com/user-attachments/assets/07b53933-fbfd-4ba1-b654-6f2d72a2334b" />
+<img width="800" src="docs/img/openapi.png" />
 
 ## How
 
