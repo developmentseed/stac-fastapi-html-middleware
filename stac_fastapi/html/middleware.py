@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, List, Optional
@@ -15,14 +16,15 @@ from starlette.templating import Jinja2Templates
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-jinja2_env = jinja2.Environment(
-    loader=jinja2.ChoiceLoader(
-        [
-            jinja2.PackageLoader(__package__, "templates"),
-        ]
-    )
+templates_location = []
+if custom_tpl := os.environ.get("STAC_HTML_TEMPLATES_DIR"):
+    templates_location.append(jinja2.FileSystemLoader(custom_tpl))
+
+templates_location.append(jinja2.PackageLoader(__package__, "templates"))
+
+DEFAULT_TEMPLATES = Jinja2Templates(
+    env=jinja2.Environment(loader=jinja2.ChoiceLoader(templates_location))
 )
-DEFAULT_TEMPLATES = Jinja2Templates(env=jinja2_env)
 
 ENDPOINT_TEMPLATES = {
     # endpoint Name (lower case): template name
