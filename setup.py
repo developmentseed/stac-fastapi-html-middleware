@@ -46,6 +46,8 @@ setup(
     url="https://github.com/developmentseed/stac-fastapi-html-middleware",
     license="MIT",
     packages=find_namespace_packages(exclude=["tests", "scripts"]),
+    package_data={"stac_fastapi.html": ["templates/**/*"]},
+    include_package_data=True,
     zip_safe=False,
     install_requires=install_requires,
     tests_require=extra_reqs["dev"],
