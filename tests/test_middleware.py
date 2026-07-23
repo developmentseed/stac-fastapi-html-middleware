@@ -15,15 +15,20 @@ from stac_fastapi.html.middleware import HTMLRenderMiddleware, preferred_encodin
 
 fixtures_dir = os.path.join(os.path.dirname(__file__), "fixtures")
 
-collections_data = json.load(open(os.path.join(fixtures_dir, "collections.json"), "r"))
-conformances_data = json.load(open(os.path.join(fixtures_dir, "conformances.json"), "r"))
-items_data = json.load(open(os.path.join(fixtures_dir, "items.json"), "r"))
-landing_data = json.load(open(os.path.join(fixtures_dir, "landing.json"), "r"))
-search_data = json.load(open(os.path.join(fixtures_dir, "search.json"), "r"))
-queryables_data = json.load(open(os.path.join(fixtures_dir, "queryables.json"), "r"))
-collection_queryables_data = json.load(
-    open(os.path.join(fixtures_dir, "collection_queryables.json"), "r")
-)
+with open(os.path.join(fixtures_dir, "collections.json"), "r") as f:
+    collections_data = json.load(f)
+with open(os.path.join(fixtures_dir, "conformances.json"), "r") as f:
+    conformances_data = json.load(f)
+with open(os.path.join(fixtures_dir, "items.json"), "r") as f:
+    items_data = json.load(f)
+with open(os.path.join(fixtures_dir, "landing.json"), "r") as f:
+    landing_data = json.load(f)
+with open(os.path.join(fixtures_dir, "search.json"), "r") as f:
+    search_data = json.load(f)
+with open(os.path.join(fixtures_dir, "queryables.json"), "r") as f:
+    queryables_data = json.load(f)
+with open(os.path.join(fixtures_dir, "collection_queryables.json"), "r") as f:
+    collection_queryables_data = json.load(f)
 
 
 class GeoJSONResponse(JSONResponse):
